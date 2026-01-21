@@ -69,35 +69,61 @@ poweroff_vm() {
 }
 
 delete_vm() {
-    # Get clean list of VM names
-    mapfile -t vms < <(VBoxManage list vms | cut -d '"' -f 2)
+    # Get the raw list: "Name" {UUID}
+    mapfile -t vms_raw < <(VBoxManage list vms)
     
-    if [ ${#vms[@]} -eq 0 ]; then
+    if [ ${#vms_raw[@]} -eq 0 ]; then
         echo -e "${RED}No VMs found.${RESET}"; return
     fi
 
     echo -e "\n${YELLOW}--- Delete VM ---${RESET}"
     echo "[0] BACK"
-    for i in "${!vms[@]}"; do echo "[$((i + 1))] ${vms[$i]}"; done
+    
+    # Store just the names/UUIDs in an array for logic
+    declare -a vms_names
+    declare -a vms_uuids
+
+    for i in "${!vms_raw[@]}"; do
+        # Extract name (between quotes) and UUID (between braces)
+        name=$(echo "${vms_raw[$i]}" | cut -d '"' -f 2)
+        uuid=$(echo "${vms_raw[$i]}" | cut -d '{' -f 2 | cut -d '}' -f 1)
+        vms_names[$i]="$name"
+        vms_uuids[$i]="$uuid"
+        echo "[$((i + 1))] $name {$uuid}"
+    done
 
     read -p "Enter Index, Name, or ID (min 3 chars): " choice
-    [ "$choice" == "0" ] || [ -z "$choice" ] && return
+    [[ "$choice" == "0" || -z "$choice" ]] && return
 
-    # 1. Check if input is a valid list index
-    if [[ "$choice" =~ ^[0-9]+$ ]] && [ "$choice" -le "${#vms[@]}" ]; then
-        target="${vms[$((choice - 1))]}"
-    # 2. Check for Name/UUID prefix (enforce 3 char minimum for safety)
+    target=""
+    # 1. Match by Index
+    if [[ "$choice" =~ ^[0-9]+$ ]] && [ "$choice" -le "${#vms_names[@]}" ]; then
+        # If it's inaccessible, we MUST use the UUID
+        if [ "${vms_names[$((choice - 1))]}" == "<inaccessible>" ]; then
+            target="${vms_uuids[$((choice - 1))]}"
+        else
+            target="${vms_names[$((choice - 1))]}"
+        fi
+    # 2. Match by Prefix (Name or UUID)
     elif [ ${#choice} -ge 3 ]; then
-        # Find first VM that starts with the input string
-        target=$(VBoxManage list vms | cut -d '"' -f 2 | grep -i "^${choice}" | head -n 1)
+        # Search raw list for any line starting with or containing the choice
+        match=$(VBoxManage list vms | grep -i "${choice}" | head -n 1)
+        name_match=$(echo "$match" | cut -d '"' -f 2)
+        uuid_match=$(echo "$match" | cut -d '{' -f 2 | cut -d '}' -f 1)
+        
+        if [ "$name_match" == "<inaccessible>" ]; then target="$uuid_match"; 
+        else target="$name_match"; fi
     fi
 
     if [ -n "$target" ]; then
         read -p "Delete '$target'? (y/n): " confirm
-        [[ "$confirm" == [yY] ]] && VBoxManage unregistervm "$target" --delete || echo "Aborted."
+        if [[ "$confirm" == [yY] ]]; then
+            # 'unregistervm' works on UUIDs even if the VM is inaccessible
+            VBoxManage unregistervm "$target" --delete
+            echo -e "${GREEN}VM '$target' removed.${RESET}"
+        fi
     else
-        echo -e "${RED}No match found.${RESET}"
-        delete_vm
+        echo -e "${RED}No match found.${RESET}"; delete_vm
     fi
 }
 
