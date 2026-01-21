@@ -9,7 +9,7 @@ YELLOW="\033[0;33m"
 
 # Variables to fill
 GOINFRE="/goinfre/$(whoami)" # folder to use to download/extract ! goinfre is only on the mac at school !
-RAM_SIZE="8192"
+RAM_SIZE="4096"
 URL_DOWNLOAD="https://cdn.intra.42.fr/isos/Darkly_i386.iso"
 ISO_PATH="${GOINFRE}/Darkly_i386.iso" # path to the iso in the goinfre
 VM_NAME="$(hostname -s)-darkly-$(whoami)"
@@ -38,7 +38,7 @@ create_vm() {
 
     echo -e "${YELLOW}Creating VirtualBox VM '${VM_NAME}'...${RESET}"
     VBoxManage createvm --name "${VM_NAME}" --ostype "${OS_TYPE}" --register
-    VBoxManage modifyvm "${VM_NAME}" --memory "${RAM_SIZE}" --cpus 2 --nic1 nat
+    VBoxManage modifyvm "${VM_NAME}" --memory "${RAM_SIZE}" --cpus 4 --nic1 nat
     VBoxManage modifyvm "${VM_NAME}" --nat-pf1 "Rule 1,tcp,127.0.0.1,${PORT_FORWARDING_HOST},10.0.2.15,80"
     VBoxManage storagectl "${VM_NAME}" --name "SATA Controller" --add sata --controller IntelAHCI
     VBoxManage storageattach "${VM_NAME}" --storagectl "SATA Controller" --port 0 --device 0 --type dvddrive --medium "${ISO_PATH}"
