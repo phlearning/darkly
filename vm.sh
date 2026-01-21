@@ -9,7 +9,7 @@ YELLOW="\033[0;33m"
 
 # Variables to fill
 GOINFRE="/goinfre/$(whoami)" # folder to use to download/extract ! goinfre is only on the mac at school !
-RAM_SIZE="4096"
+RAM_SIZE="2048"
 URL_DOWNLOAD="https://cdn.intra.42.fr/isos/Darkly_i386.iso"
 ISO_PATH="${GOINFRE}/Darkly_i386.iso" # path to the iso in the goinfre
 VM_NAME="$(hostname -s)-darkly-$(whoami)"
@@ -69,24 +69,36 @@ poweroff_vm() {
 }
 
 delete_vm() {
-    existing_vm=$(VBoxManage list vms)
-    if [ -z "${existing_vm}" ]; then
-        echo -e "${RED}No existing VMs to delete${RESET}\n"
-        main
+    # Get clean list of VM names
+    mapfile -t vms < <(VBoxManage list vms | cut -d '"' -f 2)
+    
+    if [ ${#vms[@]} -eq 0 ]; then
+        echo -e "${RED}No VMs found.${RESET}"; return
     fi
 
-    echo "List of existing VMs:"
-    echo "$existing_vm"
-    read -p "Which VM to delete: " VM_TO_DELETE
-    if ! echo "$existing_vm" | grep -q "${VM_TO_DELETE}"; then
-        echo -e "${RED}${VM_TO_DELETE} does not exist. Please provide a valid VM name.${RESET}"
+    echo -e "\n${YELLOW}--- Delete VM ---${RESET}"
+    echo "[0] BACK"
+    for i in "${!vms[@]}"; do echo "[$((i + 1))] ${vms[$i]}"; done
+
+    read -p "Enter Index, Name, or ID (min 3 chars): " choice
+    [ "$choice" == "0" ] || [ -z "$choice" ] && return
+
+    # 1. Check if input is a valid list index
+    if [[ "$choice" =~ ^[0-9]+$ ]] && [ "$choice" -le "${#vms[@]}" ]; then
+        target="${vms[$((choice - 1))]}"
+    # 2. Check for Name/UUID prefix (enforce 3 char minimum for safety)
+    elif [ ${#choice} -ge 3 ]; then
+        # Find first VM that starts with the input string
+        target=$(VBoxManage list vms | cut -d '"' -f 2 | grep -i "^${choice}" | head -n 1)
+    fi
+
+    if [ -n "$target" ]; then
+        read -p "Delete '$target'? (y/n): " confirm
+        [[ "$confirm" == [yY] ]] && VBoxManage unregistervm "$target" --delete || echo "Aborted."
+    else
+        echo -e "${RED}No match found.${RESET}"
         delete_vm
     fi
-
-    echo "Unregistering and deleting VM '${VM_TO_DELETE}'..."
-    # --delete -> automatically deletes some files related to the VM present in /home/${whoami}/VirtualBox VMs/${VM_NAME}
-    VBoxManage unregistervm "${VM_TO_DELETE}" --delete
-    echo -e "${GREEN}VM '${VM_TO_DELETE}' deleted.${RESET}"
 }
 
 menu() {
